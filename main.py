@@ -23,13 +23,32 @@ def list_packages(search=None):
     for p in packages:
         print(p)
 
-def pull_apks(package, workdir):
+def pull_apks(package, workdir=None):
+    # If workdir not provided, default to package name
+    if not workdir or workdir == "workdir":
+        workdir = package
     os.makedirs(workdir, exist_ok=True)
-    result = subprocess.run(["adb", "shell", "pm", "path", package], capture_output=True, text=True)
+
+    # Get all APK paths for the package
+    result = subprocess.run(["adb", "shell", "pm", "path", package],
+                            capture_output=True, text=True)
     paths = [p.replace("package:", "").strip() for p in result.stdout.splitlines()]
+    if not paths:
+        print(f"No APKs found for package: {package}")
+        return
+
+    print(f"Found {len(paths)} APK(s) for {package}:")
     for path in paths:
+        print(" -", path)
+
+    # Pull each APK into the workdir
+    for i, path in enumerate(paths):
         fname = os.path.basename(path)
-        run(["adb", "pull", path, os.path.join(workdir, fname)])
+        local_name = fname
+        if os.path.exists(os.path.join(workdir, local_name)):
+            local_name = f"split_{i}_{fname}"
+        run(["adb", "pull", path, os.path.join(workdir, local_name)])
+
 
 def decompile_apks(workdir):
     for apk in glob.glob(os.path.join(workdir, "*.apk")):
@@ -76,10 +95,11 @@ if __name__ == "__main__":
     if args.mode == "list":
         list_packages(args.search_or_package)
     elif args.mode == "pull":
+        target_dir = args.dir if args.dir != "workdir" else args.search_or_package
         if not args.search_or_package:
             print("Error: package name required")
         else:
-            pull_apks(args.search_or_package, args.dir)
+            pull_apks(args.search_or_package, target_dir)
     elif args.mode == "decompile":
         decompile_apks(args.dir)
     elif args.mode == "build":
